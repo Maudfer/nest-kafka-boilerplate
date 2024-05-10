@@ -1,0 +1,63 @@
+services:
+  api_gateway:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - lead_service
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    ports:
+      - "29092:29092"
+      - "9092:9092"
+
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: nest_microservices
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  lead_service:
+    build:
+      context: .
+      dockerfile: ./src/lead/Dockerfile
+    volumes:
+      - ./prisma/migrations:/usr/src/app/prisma/migrations
+    environment:
+      KAFKA_BROKER: kafka:9092
+      KAFKA_CONSUMER_GROUP: lead-service
+      DATABASE_URL: postgresql://admin:admin@postgres:5432/nest_microservices?schema=public
+    ports:
+      - "3000:3000"
+    depends_on:
+      - kafka
+      - postgres
+
+volumes:
+  pgdata:
